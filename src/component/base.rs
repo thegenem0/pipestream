@@ -13,6 +13,20 @@ pub trait PipelineComponent<I: IOParam, O: IOParam>: Send + Sync + Debug {
     }
 }
 
+impl<I, O> PipelineComponent<I, O> for Box<dyn PipelineComponent<I, O> + Send + Sync>
+where
+    I: IOParam + Clone,
+    O: IOParam,
+{
+    fn process(&self, input: I) -> Result<O, BoxedError> {
+        (**self).process(input)
+    }
+
+    fn name(&self) -> String {
+        (**self).name()
+    }
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

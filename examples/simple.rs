@@ -7,7 +7,7 @@ use std::{
 
 use pipestream::{
     common::BoxedError,
-    component::base::PipelineComponent,
+    component::{base::PipelineComponent, with_retry},
     pipeline::PipelineBuilder,
     stage::{PipelineStage, StageConfig},
 };

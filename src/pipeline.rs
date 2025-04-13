@@ -233,6 +233,19 @@ where
     }
 }
 
+pub trait StageCompatible<I, O> {}
+
+/// Implement compatibility for stages with matching input/output types
+impl<I, M, O, C1, C2> StageCompatible<I, O> for (PipelineStage<I, M, C1>, PipelineStage<M, O, C2>)
+where
+    I: IOParam + Clone + 'static,
+    M: IOParam + Clone + 'static,
+    O: IOParam + 'static,
+    C1: PipelineComponent<I, M> + Send + Sync + 'static,
+    C2: PipelineComponent<M, O> + Send + Sync + 'static,
+{
+}
+
 /// Builder for creating pipelines with type safety between stages
 pub struct PipelineBuilder<I, O>
 where
@@ -272,6 +285,10 @@ where
         NewO: IOParam,
         C: PipelineComponent<O, NewO> + Send + Sync + 'static,
         O: Clone,
+        (
+            PipelineStage<I, O, Box<dyn PipelineComponent<I, O> + Send + Sync>>,
+            PipelineStage<O, NewO, C>,
+        ): StageCompatible<I, NewO>,
     {
         if let Some(current) = self.processor {
             let chained = ChainedProcessor {
