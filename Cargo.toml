@@ -1,0 +1,18 @@
+[package]
+name = "pipestream"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pipestream"
+crate-type = ["rlib"]
+
+[dependencies]
+crossbeam = "0.8.4"
+num_cpus = "1.16.0"
+rand = "0.9.0"
+thiserror = "2.0.12"
+
+[[example]]
+name = "simple"
+path = "examples/simple.rs"
