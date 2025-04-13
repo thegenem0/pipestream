@@ -5,6 +5,7 @@ pub mod component;
 pub mod pipeline;
 pub mod pool;
 pub mod stage;
+pub mod stream;
 pub mod worker;
 
 #[allow(dead_code)]

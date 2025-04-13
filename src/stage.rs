@@ -61,6 +61,7 @@ impl Default for StageConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct PipelineStage<I, O, C>
 where
     I: IOParam + Clone,

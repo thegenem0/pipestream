@@ -16,3 +16,11 @@ thiserror = "2.0.12"
 [[example]]
 name = "simple"
 path = "examples/simple.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+
+[[example]]
+name = "connected_streams"
+path = "examples/connected_streams.rs"

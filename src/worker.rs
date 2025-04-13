@@ -17,6 +17,7 @@ use crate::{
 
 type Job<T> = Box<dyn FnOnce() -> Result<(usize, T), BoxedError> + Send + 'static>;
 
+#[derive(Debug)]
 struct Worker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>,
@@ -84,6 +85,7 @@ where
 }
 
 /// A lock-free worker pool for processing jobs in parallel
+#[derive(Debug)]
 pub struct WorkerPool<I, O>
 where
     I: IOParam + Clone,

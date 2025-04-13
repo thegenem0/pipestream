@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use crate::{
     common::{BoxedError, IOParam},
@@ -17,7 +18,7 @@ pub struct PipelineStageInfo {
 }
 
 /// Internal trait used to handle dynamic stage processing
-trait StageProcessor<I, O>: Send + Sync
+trait StageProcessor<I, O>: Send + Sync + Debug
 where
     I: IOParam + Clone,
     O: IOParam,
@@ -31,6 +32,7 @@ where
 }
 
 /// Pipeline that coordinates processing through stages
+#[derive(Debug)]
 pub struct Pipeline<I, O>
 where
     I: IOParam + Clone,
@@ -40,6 +42,7 @@ where
     _phantom: std::marker::PhantomData<(I, O)>,
 }
 
+#[derive(Debug)]
 struct ChainedProcessor<I, M, O>
 where
     I: IOParam + Clone,
