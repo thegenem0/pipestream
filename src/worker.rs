@@ -11,11 +11,11 @@ use std::{
 };
 
 use crate::{
-    common::{BoxedError, IOParam},
-    component::base::PipelineComponent,
+    common::{IOParam, LibResult},
+    component::PipelineComponent,
 };
 
-type Job<T> = Box<dyn FnOnce() -> Result<(usize, T), BoxedError> + Send + 'static>;
+type Job<T> = Box<dyn FnOnce() -> LibResult<(usize, T)> + Send + 'static>;
 
 #[derive(Debug)]
 struct Worker {
@@ -27,7 +27,7 @@ impl Worker {
     fn new<I, O>(
         id: usize,
         job_rx: Arc<ArrayQueue<Job<O>>>,
-        results_tx: Sender<Result<(usize, O), BoxedError>>,
+        results_tx: Sender<LibResult<(usize, O)>>,
         running: Arc<AtomicBool>,
     ) -> Self
     where
@@ -88,13 +88,13 @@ where
 #[derive(Debug)]
 pub struct WorkerPool<I, O>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
     size: usize,
     workers: Vec<Worker>,
     job_queue: Arc<ArrayQueue<Job<O>>>,
-    results_rx: Receiver<Result<(usize, O), BoxedError>>,
+    results_rx: Receiver<LibResult<(usize, O)>>,
     running: Arc<AtomicBool>,
     active_jobs: Arc<AtomicUsize>,
     _phantom: std::marker::PhantomData<(I, O)>,
@@ -102,7 +102,7 @@ where
 
 impl<I, O> WorkerPool<I, O>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
     /// Create a new worker pool with the specified number of worker threads
@@ -140,7 +140,7 @@ where
         &self,
         component: Arc<C>,
         inputs: Vec<(usize, I)>,
-    ) -> Vec<(usize, Result<O, BoxedError>)>
+    ) -> Vec<(usize, LibResult<O>)>
     where
         C: PipelineComponent<I, O> + Send + Sync + 'static,
     {
@@ -230,7 +230,7 @@ where
 /// Parallel processor for processing batches of inputs across multiple worker threads
 pub struct WorkerParallelExecutor<I, O, C>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
     C: PipelineComponent<I, O> + Send + Sync + 'static,
 {
@@ -241,7 +241,7 @@ where
 
 impl<I, O, C> WorkerParallelExecutor<I, O, C>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
     C: PipelineComponent<I, O> + Send + Sync + 'static,
 {
@@ -255,7 +255,7 @@ where
     }
 
     /// Process a batch of inputs in parallel
-    pub fn process_batch<T>(&self, inputs: Vec<(T, I)>) -> Vec<(T, Result<O, BoxedError>)>
+    pub fn process_batch<T>(&self, inputs: Vec<(T, I)>) -> Vec<(T, LibResult<O>)>
     where
         T: Clone + Send + Sync + 'static,
     {
@@ -301,14 +301,14 @@ mod tests {
     #[derive(Debug, Clone)]
     struct TestInput(usize);
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct TestOutput(usize);
 
     #[derive(Debug)]
     struct TestComponent;
 
     impl PipelineComponent<TestInput, TestOutput> for TestComponent {
-        fn process(&self, input: TestInput) -> Result<TestOutput, BoxedError> {
+        fn process(&self, input: TestInput) -> LibResult<TestOutput> {
             // Simulate some work
             std::thread::sleep(Duration::from_millis(10));
             Ok(TestOutput(input.0 * 2))
@@ -378,7 +378,7 @@ mod tests {
         }
 
         impl PipelineComponent<TestInput, TestOutput> for CountingComponent {
-            fn process(&self, input: TestInput) -> Result<TestOutput, BoxedError> {
+            fn process(&self, input: TestInput) -> LibResult<TestOutput> {
                 self.counter.fetch_add(1, Ordering::Relaxed);
                 Ok(TestOutput(input.0))
             }

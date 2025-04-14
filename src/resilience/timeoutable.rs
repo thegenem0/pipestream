@@ -1,6 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::common::{BoxedError, IOParam};
+use crate::common::{IOParam, LibResult};
+
+use crate::error::LibError;
 
 use super::PipelineComponent;
 
@@ -43,7 +45,7 @@ where
     O: IOParam,
     C: PipelineComponent<I, O> + 'static,
 {
-    fn process(&self, input: I) -> Result<O, BoxedError> {
+    fn process(&self, input: I) -> LibResult<O> {
         let component = Arc::clone(&self.inner);
         let input_clone = input.clone();
         let timeout = self.timeout;
@@ -52,7 +54,7 @@ where
 
         match operation.join() {
             Ok(result) => result,
-            Err(_) => Err(Box::new(TimeoutError { timeout })),
+            Err(_) => Err(LibError::Timeout(timeout)),
         }
     }
 

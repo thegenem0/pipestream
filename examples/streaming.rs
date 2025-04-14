@@ -7,8 +7,8 @@ use std::{
 
 use crossbeam::channel;
 use pipestream::{
-    common::BoxedError,
-    component::base::PipelineComponent,
+    common::LibResult,
+    component::PipelineComponent,
     pipeline::PipelineBuilder,
     stage::{PipelineStage, StageConfig},
     stream::PipelineStreamExt,
@@ -99,7 +99,7 @@ fn main() {
     #[derive(Debug, Clone)]
     struct Tokenizer;
     impl PipelineComponent<String, Vec<String>> for Tokenizer {
-        fn process(&self, input: String) -> Result<Vec<String>, BoxedError> {
+        fn process(&self, input: String) -> LibResult<Vec<String>> {
             let normalized = input
                 .chars()
                 .map(|c| {
@@ -121,7 +121,7 @@ fn main() {
     #[derive(Debug, Clone)]
     struct StopWordRemover;
     impl PipelineComponent<Vec<String>, Vec<String>> for StopWordRemover {
-        fn process(&self, input: Vec<String>) -> Result<Vec<String>, BoxedError> {
+        fn process(&self, input: Vec<String>) -> LibResult<Vec<String>> {
             // Common English stop words
             let stop_words: HashSet<&str> = [
                 "a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", "by",
@@ -150,7 +150,7 @@ fn main() {
     #[derive(Debug, Clone)]
     struct TextAnalyzer;
     impl PipelineComponent<Vec<String>, TextStats> for TextAnalyzer {
-        fn process(&self, input: Vec<String>) -> Result<TextStats, BoxedError> {
+        fn process(&self, input: Vec<String>) -> LibResult<TextStats> {
             let word_count = input.len();
             let total_chars: usize = input.iter().map(|s| s.len()).sum();
             let avg_word_length = if word_count > 0 {

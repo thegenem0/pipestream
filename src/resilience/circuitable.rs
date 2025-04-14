@@ -3,7 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{BoxedError, IOParam};
+use crate::{
+    common::{IOParam, LibResult},
+    error::LibError,
+};
 
 use super::PipelineComponent;
 
@@ -177,16 +180,14 @@ where
     O: IOParam,
     C: PipelineComponent<I, O>,
 {
-    fn process(&self, input: I) -> Result<O, BoxedError> {
+    fn process(&self, input: I) -> LibResult<O> {
         let current_state = {
             let state = self.state.lock().unwrap();
             state.state
         };
 
         match current_state {
-            CircuitState::Open => {
-                Err(format!("Circuit breaker for {} is open", self.inner.name()).into())
-            }
+            CircuitState::Open => Err(LibError::CircuitOpen(self.inner.name())),
             CircuitState::Closed | CircuitState::Recovering => {
                 match self.inner.process(input.clone()) {
                     Ok(output) => {
@@ -214,7 +215,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::component::base::PipelineComponent;
+    use crate::component::PipelineComponent;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
@@ -253,11 +254,14 @@ mod tests {
     }
 
     impl PipelineComponent<TestInput, TestOutput> for TestComponent {
-        fn process(&self, input: TestInput) -> Result<TestOutput, BoxedError> {
+        fn process(&self, input: TestInput) -> LibResult<TestOutput> {
             self.process_count.fetch_add(1, Ordering::SeqCst);
 
             if self.fail_on.contains(&input.0) {
-                Err(format!("Failed on input {}", input.0).into())
+                Err(LibError::component(
+                    std::any::type_name::<TestInput>(),
+                    format!("Failed on input {}", input.0),
+                ))
             } else {
                 Ok(TestOutput(input.0 * 2))
             }

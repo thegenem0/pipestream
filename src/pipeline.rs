@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use crate::{
-    common::{BoxedError, IOParam},
-    component::base::PipelineComponent,
+    common::{IOParam, LibResult},
+    component::PipelineComponent,
+    error::LibError,
     stage::PipelineStage,
 };
 
@@ -20,13 +21,13 @@ pub struct PipelineStageInfo {
 /// Internal trait used to handle dynamic stage processing
 trait StageProcessor<I, O>: Send + Sync + Debug
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
-    fn process(&self, input: I) -> Result<O, BoxedError>;
+    fn process(&self, input: I) -> LibResult<O>;
 
     // Type-erased batch processing method with no generics
-    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, Result<O, BoxedError>)>;
+    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, LibResult<O>)>;
 
     fn get_stage_info(&self) -> Vec<PipelineStageInfo>;
 }
@@ -35,7 +36,7 @@ where
 #[derive(Debug)]
 pub struct Pipeline<I, O>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
     processor: Option<Box<dyn StageProcessor<I, O>>>,
@@ -45,8 +46,8 @@ where
 #[derive(Debug)]
 struct ChainedProcessor<I, M, O>
 where
-    I: IOParam + Clone,
-    M: IOParam + Clone,
+    I: IOParam,
+    M: IOParam,
     O: IOParam,
 {
     first: Box<dyn StageProcessor<I, M>>,
@@ -55,16 +56,16 @@ where
 
 impl<I, M, O> StageProcessor<I, O> for ChainedProcessor<I, M, O>
 where
-    I: IOParam + Clone,
-    M: IOParam + Clone,
+    I: IOParam,
+    M: IOParam,
     O: IOParam,
 {
-    fn process(&self, input: I) -> Result<O, BoxedError> {
+    fn process(&self, input: I) -> LibResult<O> {
         let intermediate = self.first.process(input)?;
         self.second.process(intermediate)
     }
 
-    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, Result<O, BoxedError>)> {
+    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, LibResult<O>)> {
         // Process through first stage
         let intermediate_results = self.first.process_batch(batch);
 
@@ -86,7 +87,13 @@ where
             .map(|(id, result)| match result {
                 Ok(_) => match result_map.remove(&id) {
                     Some(second_result) => (id, second_result),
-                    None => (id, Err(format!("Missing result for ID {}", id).into())),
+                    None => (
+                        id,
+                        Err(LibError::component(
+                            std::any::type_name::<I>(),
+                            format!("Missing result for ID {}", id),
+                        )),
+                    ),
                 },
                 Err(e) => (id, Err(e)),
             })
@@ -102,15 +109,15 @@ where
 
 impl<I, O, C> StageProcessor<I, O> for PipelineStage<I, O, C>
 where
-    I: IOParam + Clone + 'static,
-    O: IOParam + 'static,
+    I: IOParam,
+    O: IOParam,
     C: PipelineComponent<I, O> + Send + Sync + 'static,
 {
-    fn process(&self, input: I) -> Result<O, BoxedError> {
+    fn process(&self, input: I) -> LibResult<O> {
         self.process(input)
     }
 
-    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, Result<O, BoxedError>)> {
+    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, LibResult<O>)> {
         self.process_batch(batch)
     }
 
@@ -132,8 +139,8 @@ where
 
 impl<I, O> Pipeline<I, O>
 where
-    I: IOParam + Clone + 'static,
-    O: IOParam + 'static,
+    I: IOParam,
+    O: IOParam,
 {
     pub fn new() -> Self {
         Self {
@@ -143,15 +150,15 @@ where
     }
 
     /// Process a single input through the pipeline
-    pub fn process(&self, input: I) -> Result<O, BoxedError> {
+    pub fn process(&self, input: I) -> LibResult<O> {
         match &self.processor {
             Some(processor) => processor.process(input),
-            None => Err("Pipeline has no stages".into()),
+            None => Err(LibError::config("Pipeline has no stages")),
         }
     }
 
     /// Process a batch of inputs through the pipeline with generic ID type
-    pub fn process_batch<T>(&self, inputs: Vec<(T, I)>) -> Vec<(T, Result<O, BoxedError>)>
+    pub fn process_batch<T>(&self, inputs: Vec<(T, I)>) -> Vec<(T, LibResult<O>)>
     where
         T: Clone + Send + Sync + 'static,
     {
@@ -184,7 +191,7 @@ where
             }
             None => inputs
                 .into_iter()
-                .map(|(id, _)| (id, Err("Pipeline has no stages".into())))
+                .map(|(id, _)| (id, Err(LibError::config("Pipeline has no stages"))))
                 .collect(),
         }
     }
@@ -225,8 +232,8 @@ where
 
 impl<I, O> Default for Pipeline<I, O>
 where
-    I: IOParam + Clone + 'static,
-    O: IOParam + 'static,
+    I: IOParam,
+    O: IOParam,
 {
     fn default() -> Self {
         Self::new()
@@ -238,9 +245,9 @@ pub trait StageCompatible<I, O> {}
 /// Implement compatibility for stages with matching input/output types
 impl<I, M, O, C1, C2> StageCompatible<I, O> for (PipelineStage<I, M, C1>, PipelineStage<M, O, C2>)
 where
-    I: IOParam + Clone + 'static,
-    M: IOParam + Clone + 'static,
-    O: IOParam + 'static,
+    I: IOParam,
+    M: IOParam,
+    O: IOParam,
     C1: PipelineComponent<I, M> + Send + Sync + 'static,
     C2: PipelineComponent<M, O> + Send + Sync + 'static,
 {
@@ -249,7 +256,7 @@ where
 /// Builder for creating pipelines with type safety between stages
 pub struct PipelineBuilder<I, O>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
     processor: Option<Box<dyn StageProcessor<I, O>>>,
@@ -258,7 +265,7 @@ where
 
 impl<I, O> PipelineBuilder<I, O>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
     pub fn new() -> Self {
@@ -316,7 +323,7 @@ where
 
 impl<I, O> Default for PipelineBuilder<I, O>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
 {
     fn default() -> Self {

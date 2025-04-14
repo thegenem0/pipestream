@@ -1,6 +1,9 @@
 use std::{thread, time::Duration};
 
-use crate::common::{BoxedError, IOParam};
+use crate::{
+    common::{IOParam, LibResult},
+    error::LibError,
+};
 
 use super::PipelineComponent;
 
@@ -103,7 +106,7 @@ where
     O: IOParam,
     C: PipelineComponent<I, O>,
 {
-    fn process(&self, input: I) -> Result<O, BoxedError> {
+    fn process(&self, input: I) -> LibResult<O> {
         let mut attempt = 0;
         let mut last_error = None;
 
@@ -122,7 +125,14 @@ where
             }
         }
 
-        Err(last_error.unwrap_or_else(|| "Retry failed with no attempts".into()))
+        Err(LibError::component(
+            std::any::type_name::<I>(),
+            format!(
+                "Failed to process input after {} attempts: {}",
+                attempt,
+                last_error.unwrap().to_string()
+            ),
+        ))
     }
 
     fn name(&self) -> String {

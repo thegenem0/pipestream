@@ -10,7 +10,8 @@ use crossbeam::{
 };
 
 use crate::{
-    common::{BoxedError, IOParam},
+    common::{IOParam, LibResult},
+    error::LibError,
     pipeline::Pipeline,
 };
 
@@ -24,7 +25,7 @@ where
     Queued,
     Processing,
     Completed(O),
-    Failed(BoxedError),
+    Failed(LibError),
 }
 
 impl<O> Clone for ItemState<O>
@@ -36,7 +37,7 @@ where
             Self::Queued => Self::Queued,
             Self::Processing => Self::Processing,
             Self::Completed(output) => Self::Completed(output.clone()),
-            Self::Failed(err) => Self::Failed(format!("{}", err).into()),
+            Self::Failed(err) => Self::Failed(err.clone()),
         }
     }
 }
@@ -44,7 +45,7 @@ where
 #[derive(Debug)]
 pub struct StreamingTracker<O>
 where
-    O: IOParam + Clone,
+    O: IOParam,
 {
     next_id: ItemId,
     items: HashMap<ItemId, ItemState<O>>,
@@ -52,7 +53,7 @@ where
 
 impl<O: Clone> StreamingTracker<O>
 where
-    O: IOParam + Clone,
+    O: IOParam,
 {
     fn new() -> Self {
         Self {
@@ -83,13 +84,13 @@ where
         }
     }
 
-    fn fail_item(&mut self, id: ItemId, error: BoxedError) {
+    fn fail_item(&mut self, id: ItemId, error: LibError) {
         if let Some(state) = self.items.get_mut(&id) {
             *state = ItemState::Failed(error);
         }
     }
 
-    fn take_next_completed(&mut self) -> Option<(ItemId, Result<O, BoxedError>)> {
+    fn take_next_completed(&mut self) -> Option<(ItemId, LibResult<O>)> {
         let completed_id = self.items.iter().find_map(|(id, state)| match state {
             ItemState::Completed(_) | ItemState::Failed(_) => Some(*id),
             _ => None,
@@ -132,8 +133,8 @@ where
 #[derive(Debug)]
 struct InputProcessor<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     pipeline: Arc<Pipeline<I, O>>,
     tx: Sender<(ItemId, I)>,
@@ -143,13 +144,12 @@ where
 
 impl<I, O> InputProcessor<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     fn new(pipeline: Arc<Pipeline<I, O>>) -> Self {
         let (input_tx, input_rx) = crossbeam::channel::unbounded::<(ItemId, I)>();
-        let (output_tx, output_rx) =
-            crossbeam::channel::unbounded::<(ItemId, Result<O, BoxedError>)>();
+        let (output_tx, output_rx) = crossbeam::channel::unbounded::<(ItemId, LibResult<O>)>();
 
         let tracker: Arc<(Mutex<StreamingTracker<O>>, Condvar)> =
             Arc::new((Mutex::new(StreamingTracker::new()), Condvar::new()));
@@ -246,10 +246,7 @@ where
         id
     }
 
-    fn wait_for_next_completed(
-        &self,
-        timeout: Option<Duration>,
-    ) -> Option<(ItemId, Result<O, BoxedError>)> {
+    fn wait_for_next_completed(&self, timeout: Option<Duration>) -> Option<(ItemId, LibResult<O>)> {
         let (tracker, condvar) = &*self.tracker;
         let mut tracker_guard = tracker.lock().unwrap();
 
@@ -292,8 +289,8 @@ where
 
 impl<I, O> Drop for InputProcessor<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     fn drop(&mut self) {
         *self.running.lock().unwrap() = false;
@@ -312,8 +309,8 @@ where
 
 impl<I, O, T> PipelineStream<I, O, T>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
     T: Send + Sync + Clone + 'static,
 {
     pub fn new(pipeline: Arc<Pipeline<I, O>>) -> Self {
@@ -327,7 +324,7 @@ where
         &self,
         input_stream: IntoIter,
         buffer_size: usize,
-    ) -> Receiver<(T, Result<O, BoxedError>)>
+    ) -> Receiver<(T, LibResult<O>)>
     where
         IntoIter: IntoIterator<Item = (T, I)> + Send + 'static,
         IntoIter::IntoIter: Send + 'static,
@@ -376,7 +373,7 @@ where
         output_rx
     }
 
-    pub fn process_batch<IntoIter>(&self, inputs: IntoIter) -> Vec<(T, Result<O, BoxedError>)>
+    pub fn process_batch<IntoIter>(&self, inputs: IntoIter) -> Vec<(T, LibResult<O>)>
     where
         IntoIter: IntoIterator<Item = (T, I)>,
     {
@@ -414,7 +411,7 @@ where
         results
     }
 
-    pub fn process(&self, input: I) -> Result<O, BoxedError> {
+    pub fn process(&self, input: I) -> LibResult<O> {
         let item_id = self.processor.process(input);
 
         let marker_id = ItemId::MAX;
@@ -435,22 +432,25 @@ where
             }
         }
 
-        Err("Failed to process input".into())
+        Err(LibError::component(
+            std::any::type_name::<I>(),
+            "Failed to process input".to_string(),
+        ))
     }
 }
 
 pub struct StreamingPipelineBuilder<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     pipeline: Arc<Pipeline<I, O>>,
 }
 
 impl<I, O> StreamingPipelineBuilder<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     pub fn new(pipeline: Pipeline<I, O>) -> Self {
         Self {
@@ -469,16 +469,16 @@ where
 
 pub trait PipelineStreamExt<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     fn streaming(self) -> StreamingPipelineBuilder<I, O>;
 }
 
 impl<I, O> PipelineStreamExt<I, O> for Pipeline<I, O>
 where
-    I: IOParam + Clone,
-    O: IOParam + Clone,
+    I: IOParam,
+    O: IOParam,
 {
     fn streaming(self) -> StreamingPipelineBuilder<I, O> {
         StreamingPipelineBuilder::new(self)
@@ -487,7 +487,7 @@ where
 
 pub trait PipelineSource<I, T>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     T: Send + Sync + Clone + 'static,
 {
     fn into_iter(self) -> Box<dyn Iterator<Item = (T, I)> + Send>;

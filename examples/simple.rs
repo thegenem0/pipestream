@@ -6,9 +6,10 @@ use std::{
 };
 
 use pipestream::{
-    common::BoxedError,
-    component::{base::PipelineComponent, with_retry},
+    common::LibResult,
+    component::PipelineComponent,
     pipeline::PipelineBuilder,
+    resilience::{retriable::RetryPolicy, with_retry},
     stage::{PipelineStage, StageConfig},
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -97,7 +98,7 @@ fn main() {
     #[derive(Debug)]
     struct Tokenizer;
     impl PipelineComponent<String, Vec<String>> for Tokenizer {
-        fn process(&self, input: String) -> Result<Vec<String>, BoxedError> {
+        fn process(&self, input: String) -> LibResult<Vec<String>> {
             let normalized = input
                 .chars()
                 .map(|c| {
@@ -119,7 +120,7 @@ fn main() {
     #[derive(Debug)]
     struct StopWordRemover;
     impl PipelineComponent<Vec<String>, Vec<String>> for StopWordRemover {
-        fn process(&self, input: Vec<String>) -> Result<Vec<String>, BoxedError> {
+        fn process(&self, input: Vec<String>) -> LibResult<Vec<String>> {
             // Common English stop words
             let stop_words: HashSet<&str> = [
                 "a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", "by",
@@ -138,7 +139,7 @@ fn main() {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct TextStats {
         word_count: usize,
         unique_word_count: usize,
@@ -148,7 +149,7 @@ fn main() {
     #[derive(Debug)]
     struct TextAnalyzer;
     impl PipelineComponent<Vec<String>, TextStats> for TextAnalyzer {
-        fn process(&self, input: Vec<String>) -> Result<TextStats, BoxedError> {
+        fn process(&self, input: Vec<String>) -> LibResult<TextStats> {
             let word_count = input.len();
             let total_chars: usize = input.iter().map(|s| s.len()).sum();
             let avg_word_length = if word_count > 0 {
@@ -167,7 +168,7 @@ fn main() {
         }
     }
 
-    const NUM_JOBS: usize = 10_000; // Number of jobs to process
+    const NUM_JOBS: usize = 1_00; // Number of jobs to process
     const MIN_WORDS: usize = 800; // Minimum words per job
     const MAX_WORDS: usize = 1000; // Maximum words per job
     const MONITOR_INTERVAL_MS: u64 = 500; // How often to print status updates
@@ -176,7 +177,13 @@ fn main() {
     let seed = 42;
     let mut rng = StdRng::seed_from_u64(seed);
 
-    let tokenizer = PipelineStage::new(Tokenizer, StageConfig::default());
+    let policy = RetryPolicy::new(3)
+        .with_backoff_base(Duration::from_millis(100), Duration::from_secs(5))
+        .with_jitter(0.1);
+
+    let retry_tokenizer = with_retry(Tokenizer, policy);
+
+    let tokenizer = PipelineStage::new(retry_tokenizer, StageConfig::default());
     let stop_word_remover = PipelineStage::new(StopWordRemover, StageConfig::default());
     let text_stats = PipelineStage::new(TextAnalyzer, StageConfig::default());
 

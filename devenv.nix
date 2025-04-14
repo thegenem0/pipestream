@@ -5,18 +5,9 @@
     components = [ "rustc" "cargo" "clippy" "rustfmt" "rust-analyzer" ];
   };
 
-  languages.python = {
-    enable = true;
-    package = pkgs.python311Packages.python;
-    venv = {
-      enable = true;
-      requirements = ''
-        maturin
-      '';
-    };
-  };
+  packages = with pkgs; [ cargo-expand valgrind ];
 
-  packages = with pkgs; [
-    cargo-expand
-  ];
+  enterShell = ''
+    cargo install cargo-valgrind
+  '';
 }

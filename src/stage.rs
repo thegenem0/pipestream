@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::{BoxedError, IOParam};
-use crate::component::base::PipelineComponent;
+use crate::common::{IOParam, LibResult};
+use crate::component::PipelineComponent;
 use crate::pool::{ObjectPool, PooledObject};
 use crate::worker::WorkerPool;
 
@@ -64,7 +64,7 @@ impl Default for StageConfig {
 #[derive(Debug)]
 pub struct PipelineStage<I, O, C>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
     C: PipelineComponent<I, O> + Send + Sync + 'static,
 {
@@ -77,7 +77,7 @@ where
 
 impl<I, O, C> PipelineStage<I, O, C>
 where
-    I: IOParam + Clone,
+    I: IOParam,
     O: IOParam,
     C: PipelineComponent<I, O> + Send + Sync + 'static,
 {
@@ -123,13 +123,13 @@ where
         self
     }
 
-    pub fn process(&self, input: I) -> Result<O, BoxedError> {
+    pub fn process(&self, input: I) -> LibResult<O> {
         let component = Arc::clone(&self.component);
         component.process(input)
     }
 
     /// Process a batch of inputs in parallel
-    pub fn process_batch<T>(&self, inputs: Vec<(T, I)>) -> Vec<(T, Result<O, BoxedError>)>
+    pub fn process_batch<T>(&self, inputs: Vec<(T, I)>) -> Vec<(T, LibResult<O>)>
     where
         T: Clone + Send + Sync + 'static,
     {
