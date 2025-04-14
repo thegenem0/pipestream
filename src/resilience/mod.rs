@@ -4,7 +4,7 @@ use circuitable::{CircuitBreakerConfig, CircuitableComponent};
 use retriable::{RetryPolicy, RetryableComponent};
 use timeoutable::TimeoutableComponent;
 
-use crate::{common::IOParam, component::PipelineComponent};
+use crate::{common::IOParam, stage::StageImpl};
 
 pub mod circuitable;
 pub mod retriable;
@@ -14,7 +14,7 @@ pub fn with_retry<I, O, C>(component: C, policy: RetryPolicy) -> RetryableCompon
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     RetryableComponent::new(component, policy)
 }
@@ -26,7 +26,7 @@ pub fn with_circuit_breaker<I, O, C>(
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     CircuitableComponent::new(component, config)
 }
@@ -35,7 +35,7 @@ pub fn with_timeout<I, O, C>(component: C, timeout: Duration) -> TimeoutableComp
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O> + 'static,
+    C: StageImpl<I, O> + 'static,
 {
     TimeoutableComponent::new(component, timeout)
 }

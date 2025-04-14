@@ -6,9 +6,8 @@ use std::{
 use crate::{
     common::{IOParam, LibResult},
     error::LibError,
+    stage::StageImpl,
 };
-
-use super::PipelineComponent;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CircuitState {
@@ -117,7 +116,7 @@ pub struct CircuitableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     inner: C,
     config: CircuitBreakerConfig,
@@ -129,7 +128,7 @@ impl<I, O, C> CircuitableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     pub fn new(component: C, config: CircuitBreakerConfig) -> Self {
         Self {
@@ -174,11 +173,11 @@ where
     }
 }
 
-impl<I, O, C> PipelineComponent<I, O> for CircuitableComponent<I, O, C>
+impl<I, O, C> StageImpl<I, O> for CircuitableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     fn process(&self, input: I) -> LibResult<O> {
         let current_state = {
@@ -215,7 +214,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::component::PipelineComponent;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
@@ -253,7 +251,7 @@ mod tests {
         }
     }
 
-    impl PipelineComponent<TestInput, TestOutput> for TestComponent {
+    impl StageImpl<TestInput, TestOutput> for TestComponent {
         fn process(&self, input: TestInput) -> LibResult<TestOutput> {
             self.process_count.fetch_add(1, Ordering::SeqCst);
 
@@ -277,7 +275,7 @@ mod tests {
     where
         I: IOParam + Clone,
         O: IOParam,
-        C: PipelineComponent<I, O>,
+        C: StageImpl<I, O>,
     {
         let state = circuit.state.lock().unwrap();
         state.state

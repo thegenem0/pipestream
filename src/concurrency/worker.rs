@@ -12,13 +12,13 @@ use std::{
 
 use crate::{
     common::{IOParam, LibResult},
-    component::PipelineComponent,
+    stage::StageImpl,
 };
 
 type Job<T> = Box<dyn FnOnce() -> LibResult<(usize, T)> + Send + 'static>;
 
 #[derive(Debug)]
-struct Worker {
+pub(crate) struct Worker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -80,7 +80,7 @@ where
     I: IOParam,
     O: IOParam,
 {
-    Job(usize, I, Arc<dyn PipelineComponent<I, O> + Send + Sync>),
+    Job(usize, I, Arc<dyn StageImpl<I, O> + Send + Sync>),
     Terminate,
 }
 
@@ -142,7 +142,7 @@ where
         inputs: Vec<(usize, I)>,
     ) -> Vec<(usize, LibResult<O>)>
     where
-        C: PipelineComponent<I, O> + Send + Sync + 'static,
+        C: StageImpl<I, O> + Send + Sync + 'static,
     {
         let total_jobs = inputs.len();
         self.active_jobs.fetch_add(total_jobs, Ordering::Relaxed);
@@ -214,6 +214,10 @@ where
     pub fn queue_capacity(&self) -> usize {
         self.job_queue.capacity()
     }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
 }
 
 impl<I, O> Drop for WorkerPool<I, O>
@@ -232,7 +236,7 @@ pub struct WorkerParallelExecutor<I, O, C>
 where
     I: IOParam,
     O: IOParam,
-    C: PipelineComponent<I, O> + Send + Sync + 'static,
+    C: StageImpl<I, O> + Send + Sync + 'static,
 {
     component: Arc<C>,
     pool: WorkerPool<I, O>,
@@ -243,7 +247,7 @@ impl<I, O, C> WorkerParallelExecutor<I, O, C>
 where
     I: IOParam,
     O: IOParam,
-    C: PipelineComponent<I, O> + Send + Sync + 'static,
+    C: StageImpl<I, O> + Send + Sync + 'static,
 {
     /// Create a new parallel processor with the given component and number of worker threads
     pub fn new(component: C, num_workers: usize) -> Self {
@@ -307,7 +311,7 @@ mod tests {
     #[derive(Debug)]
     struct TestComponent;
 
-    impl PipelineComponent<TestInput, TestOutput> for TestComponent {
+    impl StageImpl<TestInput, TestOutput> for TestComponent {
         fn process(&self, input: TestInput) -> LibResult<TestOutput> {
             // Simulate some work
             std::thread::sleep(Duration::from_millis(10));
@@ -377,7 +381,7 @@ mod tests {
             counter: Arc<AtomicUsize>,
         }
 
-        impl PipelineComponent<TestInput, TestOutput> for CountingComponent {
+        impl StageImpl<TestInput, TestOutput> for CountingComponent {
             fn process(&self, input: TestInput) -> LibResult<TestOutput> {
                 self.counter.fetch_add(1, Ordering::Relaxed);
                 Ok(TestOutput(input.0))

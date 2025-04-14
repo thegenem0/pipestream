@@ -1,72 +1,18 @@
-use std::error::Error;
-use std::fmt::Debug;
 use std::sync::Arc;
-use std::time::Duration;
 
-use crate::common::{IOParam, LibResult};
-use crate::component::PipelineComponent;
-use crate::pool::{ObjectPool, PooledObject};
-use crate::worker::WorkerPool;
+use crate::{
+    common::{IOParam, LibResult},
+    concurrency::{ObjectPool, PooledObject, WorkerPool},
+};
 
-#[derive(Debug, thiserror::Error)]
-pub enum PipelineError {
-    #[error("Pipeline component '{0}' failed: {1}")]
-    ComponentError(String, Box<dyn Error + Send + Sync>),
-    #[error("Pipeline error: {0}")]
-    Other(String),
-    #[error("Task cancelled")]
-    Cancelled,
-    #[error("Worker thread panicked")]
-    WorkerPanic,
-}
+use super::{DynStage, StageConfig, StageImpl, StageInfo};
 
 #[derive(Debug)]
-pub struct StageInfo {
-    pub active_jobs: usize,
-    pub queue_capacity: usize,
-    pub worker_count: usize,
-    pub input_pool_available: usize,
-    pub output_pool_available: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct StageConfig {
-    /// Number of worker threads
-    pub workers: usize,
-    /// Maximum batch size for parallel processing
-    pub batch_size: usize,
-    /// Object pool size for input buffers
-    pub input_pool_size: usize,
-    /// Object pool size for output buffers
-    pub output_pool_size: usize,
-    /// Maximum queue size for pending tasks
-    pub max_queue_size: usize,
-    /// Backpressure threshold (% of queue capacity)
-    pub backpressure_threshold: f64,
-    /// Processing timeout
-    pub timeout: Option<Duration>,
-}
-
-impl Default for StageConfig {
-    fn default() -> Self {
-        Self {
-            workers: num_cpus::get(),
-            batch_size: 100,
-            input_pool_size: 1000,
-            output_pool_size: 1000,
-            max_queue_size: 10000,
-            backpressure_threshold: 0.8,
-            timeout: None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct PipelineStage<I, O, C>
+pub struct Stage<I, O, C>
 where
     I: IOParam,
     O: IOParam,
-    C: PipelineComponent<I, O> + Send + Sync + 'static,
+    C: StageImpl<I, O> + Send + Sync + 'static,
 {
     component: Arc<C>,
     worker_pool: WorkerPool<I, O>,
@@ -75,11 +21,11 @@ where
     config: StageConfig,
 }
 
-impl<I, O, C> PipelineStage<I, O, C>
+impl<I, O, C> Stage<I, O, C>
 where
     I: IOParam,
     O: IOParam,
-    C: PipelineComponent<I, O> + Send + Sync + 'static,
+    C: StageImpl<I, O> + Send + Sync + 'static,
 {
     pub fn new(component: C, config: StageConfig) -> Self {
         Self {
@@ -222,4 +168,34 @@ where
             output_pool_available: self.output_pool.as_ref().map_or(0, |p| p.available()),
         }
     }
+}
+
+impl<I, O, C> DynStage<I, O> for Stage<I, O, C>
+where
+    I: IOParam,
+    O: IOParam,
+    C: StageImpl<I, O> + Send + Sync + 'static,
+{
+    fn process(&self, input: I) -> LibResult<O> {
+        self.process(input)
+    }
+
+    fn process_batch(&self, batch: Vec<(usize, I)>) -> Vec<(usize, LibResult<O>)> {
+        self.process_batch(batch)
+    }
+
+    // fn get_stage_info(&self) -> Vec<PipelineStageInfo> {
+    //     let stage_info = self.info();
+    //
+    //     let out = PipelineStageInfo {
+    //         name: "Pipeline".to_string(),
+    //         input_type: std::any::type_name::<I>().to_string(),
+    //         output_type: std::any::type_name::<O>().to_string(),
+    //         workers: stage_info.worker_count,
+    //         active_jobs: stage_info.active_jobs,
+    //         queue_capacity: stage_info.queue_capacity,
+    //     };
+    //
+    //     vec![out]
+    // }
 }

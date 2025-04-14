@@ -1,7 +1,7 @@
 use crate::common::{IOParam, LibResult};
 use std::fmt::Debug;
 
-pub trait PipelineComponent<I: IOParam, O: IOParam>: Send + Sync + Debug {
+pub trait StageImpl<I: IOParam, O: IOParam>: Send + Sync + Debug {
     fn process(&self, input: I) -> LibResult<O>;
 
     fn name(&self) -> String {
@@ -13,7 +13,7 @@ pub trait PipelineComponent<I: IOParam, O: IOParam>: Send + Sync + Debug {
     }
 }
 
-impl<I, O> PipelineComponent<I, O> for Box<dyn PipelineComponent<I, O> + Send + Sync>
+impl<I, O> StageImpl<I, O> for Box<dyn StageImpl<I, O> + Send + Sync>
 where
     I: IOParam + Clone,
     O: IOParam,

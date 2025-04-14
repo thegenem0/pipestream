@@ -5,7 +5,7 @@ use crate::{
     error::LibError,
 };
 
-use super::PipelineComponent;
+use super::StageImpl;
 
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
@@ -78,7 +78,7 @@ pub struct RetryableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     inner: C,
     policy: RetryPolicy,
@@ -89,7 +89,7 @@ impl<I, O, C> RetryableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     pub fn new(component: C, policy: RetryPolicy) -> Self {
         Self {
@@ -100,11 +100,11 @@ where
     }
 }
 
-impl<I, O, C> PipelineComponent<I, O> for RetryableComponent<I, O, C>
+impl<I, O, C> StageImpl<I, O> for RetryableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     fn process(&self, input: I) -> LibResult<O> {
         let mut attempt = 0;

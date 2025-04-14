@@ -8,10 +8,9 @@ use std::{
 use crossbeam::channel;
 use pipestream::{
     common::LibResult,
-    component::PipelineComponent,
     pipeline::PipelineBuilder,
-    stage::{PipelineStage, StageConfig},
-    stream::PipelineStreamExt,
+    stage::{Stage, StageConfig, StageImpl},
+    streaming::PipelineStreamExt,
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
@@ -98,7 +97,7 @@ fn generate_random_text(word_count: usize, rng: &mut StdRng) -> String {
 fn main() {
     #[derive(Debug, Clone)]
     struct Tokenizer;
-    impl PipelineComponent<String, Vec<String>> for Tokenizer {
+    impl StageImpl<String, Vec<String>> for Tokenizer {
         fn process(&self, input: String) -> LibResult<Vec<String>> {
             let normalized = input
                 .chars()
@@ -120,7 +119,7 @@ fn main() {
 
     #[derive(Debug, Clone)]
     struct StopWordRemover;
-    impl PipelineComponent<Vec<String>, Vec<String>> for StopWordRemover {
+    impl StageImpl<Vec<String>, Vec<String>> for StopWordRemover {
         fn process(&self, input: Vec<String>) -> LibResult<Vec<String>> {
             // Common English stop words
             let stop_words: HashSet<&str> = [
@@ -149,7 +148,7 @@ fn main() {
 
     #[derive(Debug, Clone)]
     struct TextAnalyzer;
-    impl PipelineComponent<Vec<String>, TextStats> for TextAnalyzer {
+    impl StageImpl<Vec<String>, TextStats> for TextAnalyzer {
         fn process(&self, input: Vec<String>) -> LibResult<TextStats> {
             let word_count = input.len();
             let total_chars: usize = input.iter().map(|s| s.len()).sum();
@@ -180,14 +179,14 @@ fn main() {
     let seed = 42;
     let mut rng = StdRng::seed_from_u64(seed);
 
-    let tokenizer = PipelineStage::new(Tokenizer, StageConfig::default());
-    let stop_word_remover = PipelineStage::new(StopWordRemover, StageConfig::default());
-    let text_stats = PipelineStage::new(TextAnalyzer, StageConfig::default());
+    let tokenizer = Stage::new(Tokenizer, StageConfig::default());
+    let stop_word_remover = Stage::new(StopWordRemover, StageConfig::default());
+    let text_stats = Stage::new(TextAnalyzer, StageConfig::default());
 
     let pipeline = PipelineBuilder::start_with(tokenizer)
         .then(stop_word_remover)
         .then(text_stats)
-        .build();
+        .build_blocking();
 
     // Create a streaming processor from our pipeline
     let processor = pipeline.streaming().create_processor::<usize>();

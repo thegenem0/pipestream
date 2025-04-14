@@ -4,7 +4,7 @@ use crate::common::{IOParam, LibResult};
 
 use crate::error::LibError;
 
-use super::PipelineComponent;
+use super::StageImpl;
 
 #[derive(Debug, thiserror::Error)]
 #[error("Operation timed out after {:?}", timeout)]
@@ -17,7 +17,7 @@ pub struct TimeoutableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O>,
+    C: StageImpl<I, O>,
 {
     inner: Arc<C>,
     timeout: Duration,
@@ -28,7 +28,7 @@ impl<I, O, C> TimeoutableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O> + 'static,
+    C: StageImpl<I, O> + 'static,
 {
     pub fn new(component: C, timeout: Duration) -> Self {
         Self {
@@ -39,11 +39,11 @@ where
     }
 }
 
-impl<I, O, C> PipelineComponent<I, O> for TimeoutableComponent<I, O, C>
+impl<I, O, C> StageImpl<I, O> for TimeoutableComponent<I, O, C>
 where
     I: IOParam + Clone,
     O: IOParam,
-    C: PipelineComponent<I, O> + 'static,
+    C: StageImpl<I, O> + 'static,
 {
     fn process(&self, input: I) -> LibResult<O> {
         let component = Arc::clone(&self.inner);
